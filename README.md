@@ -1,8 +1,8 @@
-# Media DL
+# Nur Media
 
 Telegram bot for downloading videos & shorts from YouTube (+ Shorts), TikTok,
 Instagram Reels, X (Twitter), VK, OK.ru, Rutube, Dzen, Reddit, Pinterest,
-Vimeo, Dailymotion, Twitch clips, Likee, Coub and more.
+Vimeo, Dailymotion, Twitch clips, Coub and more.
 
 ## Requirements
 - Python 3.8+
@@ -11,8 +11,8 @@ Vimeo, Dailymotion, Twitch clips, Likee, Coub and more.
 
 ## Installation
 ```bash
-git clone https://github.com/Nurullaev/Media-DL.git
-cd Media-DL/bot
+git clone https://github.com/Nurullaev/Nur-Media.git
+cd Nur-Media/bot
 
 python3 -m venv venv
 source venv/bin/activate
