@@ -1,4 +1,5 @@
 import asyncio
+import html
 import os
 import re
 import subprocess
@@ -53,7 +54,7 @@ class Downloader:
             filled_blocks = int(round(bar_length * percent / 100))
             bar = f"[{'█' * filled_blocks}{'░' * (bar_length - filled_blocks)}]"
 
-            text = f"<code>{self.url}</code>\n\n" f"{bar} {percent:.1f}%\n" f"💾 {format_bytes(downloaded)} / {format_bytes(total)}\n" f"⏳ Remaining: {format_time(eta)}"
+            text = f"<code>{html.escape(self.url)}</code>\n\n" f"{bar} {percent:.1f}%\n" f"💾 {format_bytes(downloaded)} / {format_bytes(total)}\n" f"⏳ Осталось: {format_time(eta)}"
 
             await self.message.edit_text(text=text)
         except Exception:
@@ -130,7 +131,7 @@ class Downloader:
             return path
         if vcodec in ("h264", "avc1", ""):
             return path
-        self._notify(f"<code>{self.url}</code>\n\n🔄 Converting video for Telegram…")
+        self._notify(f"<code>{html.escape(self.url)}</code>\n\n🔄 Конвертирую видео для Telegram…")
         out = os.path.splitext(path)[0] + ".h264.mp4"
         try:
             subprocess.run(

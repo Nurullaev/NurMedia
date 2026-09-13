@@ -2,6 +2,7 @@ import asyncio
 import html
 import os
 import random
+import re
 import uuid
 
 import shutil
@@ -22,6 +23,22 @@ ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 # Limit concurrent downloads: bursts of parallel requests make Instagram/YouTube
 # tarpit this IP (30s read timeouts) and pile up transcodes on a weak CPU.
 DOWNLOAD_SEMAPHORE = asyncio.Semaphore(2)
+
+
+async def notify_admin(bot, text: str) -> None:
+    if not ADMIN_CHAT_ID:
+        return
+    try:
+        await bot.send_message(chat_id=ADMIN_CHAT_ID, text=text)
+    except Exception:
+        pass
+
+
+async def safe_delete(msg) -> None:
+    try:
+        await msg.delete()
+    except Exception:
+        pass  # e.g. no delete rights in a group
 
 
 def publish(user_id: int, filename: str) -> str:
@@ -64,7 +81,7 @@ async def handle_download(message: types.Message):
     await message.react([types.reaction_type_emoji.ReactionTypeEmoji(emoji="👀")])
     caption = f"<b><i><a href='https://t.me/NurVPN'>Nur VPN</a></i></b>"
     u = html.escape(message.text)
-    msg = await message.answer(f"<code>{u}</code>\n\nYour download will start soon.")
+    msg = await message.answer(f"<code>{u}</code>\n\n⏳ Скоро начну загрузку…")
 
     tmpdir = tempfile.mkdtemp(prefix="ytdl_")
     downloader = Downloader(message.text, msg, tmpdir)
@@ -85,43 +102,43 @@ async def handle_download(message: types.Message):
                         await asyncio.sleep(2 * (_attempt + 1))
         except Exception as e:
             err = str(e)
-            await message.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"❗ <code>{u}</code>\n\n{html.escape(err)}")
+            await notify_admin(message.bot, f"❗ <code>{u}</code>\n\n{html.escape(err)}")
             if "429" in err or "Too Many Requests" in err:
-                await msg.edit_text(f"<code>{u}</code>\n\n⏳ This platform is temporarily rate-limiting us. Please try again in a few minutes.")
+                await msg.edit_text(f"<code>{u}</code>\n\n⏳ Платформа временно ограничивает запросы. Попробуй через пару минут.")
             else:
-                await msg.edit_text(f"<code>{u}</code>\n\n⚠️ An error occurred during download. This usually happens because the video is age-restricted (18+) or unavailable in the hosting country.")
+                await msg.edit_text(f"<code>{u}</code>\n\n⚠️ Не получилось скачать. Частые причины: видео приватное или удалено, стоит ограничение 18+ или платформа временно его не отдаёт. Попробуй позже или пришли другую ссылку.")
             return
 
         # send
         try:
             await message.answer_video(types.FSInputFile(video_path), caption=caption, width=width, height=height)
         except Exception as e:
-            await msg.edit_text(f"<code>{u}</code>\n\n⏳ The video is too large for Telegram. Uploading to file host...")
+            await msg.edit_text(f"<code>{u}</code>\n\n📦 Видео больше 50 МБ — загружаю на файлообменник…")
             try:
                 filebin_url = await asyncio.to_thread(publish, message.from_user.id, video_path)
-                await msg.edit_text(f"{filebin_url}\n\n⚠️ The link works for a single download.\n\n{caption}")
-                await message.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"<code>{filebin_url}</code>")
+                await msg.edit_text(f"{filebin_url}\n\n⚠️ Ссылка одноразовая и действует около 3 часов.\n\n{caption}")
+                await notify_admin(message.bot, f"<code>{filebin_url}</code>")
             except Exception as e:
-                await msg.edit_text("😔 Upload failed. Please try again a bit later.")
+                await msg.edit_text("😔 Не удалось загрузить файл. Попробуй чуть позже.")
 
         # also send the audio track as a separate file (bonus — never fail the request on it)
         try:
             audio_path = await asyncio.to_thread(extract_audio, video_path)
-            title = os.path.splitext(os.path.basename(audio_path))[0][:64]
+            title = re.sub(r"\s*\[[^\]]+\]$", "", os.path.splitext(os.path.basename(audio_path))[0])[:64]
             await message.answer_audio(types.FSInputFile(audio_path), title=title, caption=caption)
         except Exception:
             pass
 
         # log
-        await message.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"✅ <code>{u}</code>")
-        await message.delete()
-        await msg.delete()
+        await notify_admin(message.bot, f"✅ <code>{u}</code>")
+        await safe_delete(message)
+        await safe_delete(msg)
         success = True
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     # Promote my telegram channel (only after a successful run)
     if success and random.randint(1, 5) == 1:
-        promo_msg = await message.answer("Hi! I'm <b>@NurVPN</b> — completely free, no ads, no mandatory subscriptions. If you like my work, check out my <b><a href='https://t.me/NurVPN'>Telegram news channel</a></b> — it’s a big support! 😊\n\n<b>This message will self-delete in 15 seconds</b>")
+        promo_msg = await message.answer("Бот бесплатный 🙌 Если он пригодился — подпишись на наш канал <b><a href='https://t.me/NurVPN'>@NurVPN</a></b>, это лучшая поддержка.\n\n<i>Сообщение исчезнет через 15 секунд</i>")
         await asyncio.sleep(15)
-        await promo_msg.delete()
+        await safe_delete(promo_msg)
