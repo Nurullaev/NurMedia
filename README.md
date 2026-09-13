@@ -11,8 +11,8 @@ Vimeo, Dailymotion, Twitch clips, Coub and more.
 
 ## Installation
 ```bash
-git clone https://github.com/Nurullaev/Nur-Media.git
-cd Nur-Media/bot
+git clone https://github.com/Nurullaev/NurMedia.git
+cd NurMedia/bot
 
 python3 -m venv venv
 source venv/bin/activate

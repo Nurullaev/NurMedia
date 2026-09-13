@@ -24,6 +24,18 @@ ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 # tarpit this IP (30s read timeouts) and pile up transcodes on a weak CPU.
 DOWNLOAD_SEMAPHORE = asyncio.Semaphore(2)
 
+SUPPORTED_PREFIXES = tuple(Links.STANDART.value)
+URL_RE = re.compile(r"https?://[^\s<>\"']+")
+
+
+def find_supported_url(message: types.Message):
+    """Filter: the first supported link anywhere in the text -> {"url": ...}."""
+    for match in URL_RE.finditer(message.text or ""):
+        url = match.group(0).rstrip(").,!?;:»")
+        if url.startswith(SUPPORTED_PREFIXES):
+            return {"url": url}
+    return False
+
 
 async def notify_admin(bot, text: str) -> None:
     if not ADMIN_CHAT_ID:
@@ -75,16 +87,16 @@ def extract_audio(video_path: str) -> str:
     return audio_path
 
 
-@router.message(F.text.startswith(tuple(Links.STANDART.value)))
-async def handle_download(message: types.Message):
+@router.message(F.text, find_supported_url)
+async def handle_download(message: types.Message, url: str):
     # prepare
-    await message.react([types.reaction_type_emoji.ReactionTypeEmoji(emoji="👀")])
+    await message.react([types.ReactionTypeEmoji(emoji="👀")])
     caption = f"<b><i><a href='https://t.me/NurVPN'>Nur VPN</a></i></b>"
-    u = html.escape(message.text)
+    u = html.escape(url)
     msg = await message.answer(f"<code>{u}</code>\n\n⏳ Скоро начну загрузку…")
 
     tmpdir = tempfile.mkdtemp(prefix="ytdl_")
-    downloader = Downloader(message.text, msg, tmpdir)
+    downloader = Downloader(url, msg, tmpdir)
     success = False
     try:
         # download (throttled: at most 2 at once, so we don't burst the source)
@@ -131,7 +143,8 @@ async def handle_download(message: types.Message):
 
         # log
         await notify_admin(message.bot, f"✅ <code>{u}</code>")
-        await safe_delete(message)
+        if message.text.strip() == url:  # only a bare link; keep messages with the user's own text
+            await safe_delete(message)
         await safe_delete(msg)
         success = True
     finally:
